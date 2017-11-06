@@ -1,0 +1,313 @@
+library(forestplot)
+library(xlsx)
+library(png)
+library(gridExtra)
+library(extrafont)
+loadfonts(device="win")
+
+setwd("/Users/Adam/GD/SPRINT/github/figures")
+
+###########################
+#   Figures 1, 2, and 3   #
+###########################
+
+lab <- rbind("Multivariable adjusted models",
+             "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more",
+             NA, NA, "Instrumental variable models",
+             "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more",
+             NA)
+
+n <- rbind("No. of patients", "9,092", "861", "2,662", "3,201", "2,368", "", "", "No. of patients", "9,092", "861", "2,662", "3,201", "2,368", "")
+table <- cbind(lab, n)
+
+# cardiovascular / adverse events
+dat <- read.csv("figure2_mce.csv")
+dat <- read.csv("figure3_sae.csv")
+
+data <- 
+  structure(list(
+    mean=c(NA, t(dat$est[1:5]), NA, NA, NA, t(dat$est[6:10]), NA),
+    lb=c(NA, t(dat$lower[1:5]), NA, NA, NA, t(dat$lower[6:10]), NA),
+    ub=c(NA, t(dat$upper[1:5]), NA, NA, NA, t(dat$upper[6:10]), NA),
+    .Names = c("mean", "lower", "upper"), 
+    class = "data.frame"))
+
+# blood pressure
+setwd("/Users/Adam/GD/SPRINT/github")
+dat <- read.xlsx("fig1.xlsx", 1)
+dat <- read.xlsx("afig4_three_month.xlsx", 1)
+dat <- read.xlsx("afig5_mean_study.xlsx", 1)
+
+# DBP analyses
+dat <- read.xlsx("afig7_dbp.xlsx", 1)
+
+# unadjusted SBP
+dat <- read.xlsx("afig10_unadjusted.xlsx", 1)
+lab <- rbind("Unadjusted bivariate models",
+             "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more",
+             NA, NA, "Unadjusted instrumental variable models",
+             "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more",
+             NA)
+
+n <- rbind("No. of patients", "9,092", "861", "2,662", "3,201", "2,368", "", "", "No. of patients", "9,092", "861", "2,662", "3,201", "2,368", "")
+table <- cbind(lab, n)
+
+data <- 
+  structure(list(
+    mean=c(NA, t(dat$coef[1:5]), NA, NA, NA, t(dat$coef[6:10]), NA),
+    lb=c(NA, t(dat$low[1:5]), NA, NA, NA, t(dat$low[6:10]), NA),
+    ub=c(NA, t(dat$high[1:5]), NA, NA, NA, t(dat$high[6:10]), NA),
+    .Names = c("mean", "lower", "upper"), 
+    class = "data.frame"))
+
+#### stratified
+
+# age
+dat <- read.xlsx("afig3_age_75.xlsx", 1)
+n <- rbind("No. of patients", "6,535", "678", "1,955", "2,261", "1,641", "", "", "No. of patients", "2,557", "183", "707", "940", "727", NA)
+lab <- rbind("Less than 75 years of age", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "75 years of age or older", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+# female
+dat <- read.xlsx("afig3_female.xlsx", 1)
+n <- rbind("No. of patients", "5,875", "635", "1,720", "2,050", "1,470", "", "", "No. of patients", "3,217", "226", "942", "1,151", "898", NA)
+lab <- rbind("Male", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "Female", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+# black
+dat <- read.xlsx("afig3_race_black.xlsx", 1)
+n <- rbind("No. of patients", "6,236", "645", "1,903", "2,181", "1,507", "", "", "No. of patients", "2,856", "216", "759", "1,020", "861", NA)
+lab <- rbind("Non-black", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "Black", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+# smoker
+dat <- read.xlsx("afig3_smoker.xlsx", 1)
+n <- rbind("No. of patients", "3,996", "364", "1,203", "1,411", "1,018", "", "", "No. of patients", "5,096", "497", "1,459", "1,790", "1,350", NA)
+lab <- rbind("Non-smoker", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "Smoker", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+# obesity
+dat <- read.xlsx("afig3_bmi_35.xlsx", 1)
+n <- rbind("No. of patients", "7,582", "748", "2,325", "2,665", "1,844", "", "", "No. of patients", "1,569", "116", "363", "557", "533", NA)
+lab <- rbind("Non-obese", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "Obese", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+# CVD
+dat <- read.xlsx("afig3_sub_clinicalcvd.xlsx", 1)
+n <- rbind("No. of patients", "7,568", "789", "2,327", "2,597", "1,855", "", "", "No. of patients", "1,524", "72", "335", "604", "513", NA)
+lab <- rbind("No history of CVD", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "History of CVD", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+# CKD
+dat <- read.xlsx("afig3_sub_ckd.xlsx", 1)
+n <- rbind("No. of patients", "6,520", "746", "2,045", "2,264", "1,465", "", "", "No. of patients", "2,572", "115", "617", "937", "903", NA)
+lab <- rbind("No history of CKD", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA, NA, 
+             "History of CKD", "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug or more", NA)
+
+data <- 
+  structure(list(
+    mean=c(NA, t(dat$coef[1:5]), NA, NA, NA, t(dat$coef[6:10]), NA),
+    lb=c(NA, t(dat$low[1:5]), NA, NA, NA, t(dat$low[6:10]), NA),
+    ub=c(NA, t(dat$high[1:5]), NA, NA, NA, t(dat$high[6:10]), NA),
+    .Names = c("mean", "lower", "upper"), 
+    class = "data.frame"))
+
+table <- cbind(lab, n)
+
+forestplot(table, graph.pos=2, mean = data$mean, lower=data$lb, upper=data$ub,
+           align=(c("r", "l")),
+           #xticks = seq(-30, 15, by=5), # mce
+           #xticks = seq(-70, 70, by=10), # sae
+           #xticks = seq(-20, 5, by=5), # SBP, SBP_mean
+           #xticks = seq(-25, 5, by=5), # SBP three-month
+           #xticks = seq(-10, 5, by=5), # dbp
+           xticks = seq(-25, 5, by=5), # SBP subgroups
+           clip = c(-25, 5), # SBP subgroups
+           is.summary=c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, 
+                        TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
+           zero=0, # hrzl_lines = list("8" = gpar(lty=2, col="")),
+           graphwidth=unit(250,'mm'), lineheight=unit(15,'mm'),
+           col=fpColors(box="royalblue",line="darkblue", summary="royalblue", zero = "black"),
+           hrzl_lines = list("8" = gpar(col="grey", lty=2)),
+           #boxsize=c(.45, .8, .45, .45, .45, .45, .45, .45,.45, .8, .45, .45, .45, .45),
+           boxsize=c(.3, .55, .3, .3, .3, .3, .3, .3,.3, .55, .3, .3, .3, .3, .3),
+           fn.ci_norm=c("fpDrawNormalCI", 
+                        "fpDrawDiamondCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI",
+                        "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", 
+                        "fpDrawDiamondCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI"),
+           xlab="Change in systolic blood pressure (mm Hg)",
+           #xlab="Change in diastolic blood pressure (mm Hg)",
+           #xlab="Change in absolute risk (events per thousand person-years)",
+           txt_gp=fpTxtGp(ticks=gpar(fontfamily="Georgia", cex=1.2), 
+               xlab=gpar(fontfamily="Georgia", cex=1.35),
+               label=gpar(fontfamily="Georgia", cex=1.35)))
+
+## figure 1: systolic blood pressure
+dev.print(png, 'fig1_sbp.png', width = 3600, height = 1800, res=200)
+
+# figure 2: composite major cardiovascular events
+dev.print(png, 'fig2_mce.png', width = 4000, height = 1800, res=200)
+
+# figure 3: composite serious adverse events
+dev.print(png, 'fig3_sae.png', width = 4000, height = 1800, res=200)
+
+# appendix figures 3: stratified across subgroups: 
+dev.print(png, 'afig3_age.png', width = 3150, height = 1800, res=200)
+dev.print(png, 'afig3_female.png', width = 3150, height = 1800, res=200)
+dev.print(png, 'afig3_black.png', width = 3150, height = 1800, res=200)
+dev.print(png, 'afig3_smoker.png', width = 3150, height = 1800, res=200)
+dev.print(png, 'afig3_obese.png', width = 3150, height = 1800, res=200)
+dev.print(png, 'afig3_cvd.png', width = 3150, height = 1800, res=200)
+dev.print(png, 'afig3_ckd.png', width = 3150, height = 1800, res=200)
+
+# appendix figure 4: alternative exposure = # drugs at three-month period
+dev.print(png, 'afig4_three_month.png', width = 3600, height = 1800, res=200)
+
+# appendix figure 5: alternative exposure = mean # drugs over study period
+dev.print(png, 'afig5_mean_study.png', width = 3600, height = 1800, res=200)
+
+## appendix figure 7: diastbolic blood pressure
+dev.print(png, 'afig7_dbp.png', width = 3400, height = 1800, res=200)
+
+## appendix figure 10: unadjusted SBP
+dev.print(png, 'afig_10_unadjusted.png', width = 3600, height = 1800, res=200)
+
+############################################################################
+#   appendix figure 11: incremental effect of adding a 5th or more drug    #
+############################################################################
+
+lab <- rbind("Multivariable adjusted models",
+             "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug", "Adding a fifth drug or more",
+             NA, NA, 
+             "Instrumental variable models",
+             "Overall incremental effect", "  Adding a first drug", "  Adding a second drug", "  Adding a third drug", "  Adding a fourth drug", "Adding a fifth drug or more",
+             NA)
+
+n <- rbind("No. of patients", "9,092", "861", "2,662", "3,201", "1,872", "496", "", "", "No. of patients", "9,092", "861", "2,662", "3,201", "1,872", "496", "")
+table <- cbind(lab, n)
+
+dat <- read.xlsx("afig11_fifth_drug.xlsx", 1)
+
+data <- 
+  structure(list(
+    mean=c(NA, t(dat$coef[1:6]), NA, NA, NA, t(dat$coef[7:12]), NA),
+    lb=c(NA, t(dat$low[1:6]), NA, NA, NA, t(dat$low[7:12]), NA),
+    ub=c(NA, t(dat$high[1:6]), NA, NA, NA, t(dat$high[7:12]), NA),
+    .Names = c("mean", "lower", "upper"), 
+    class = "data.frame"))
+
+forestplot(table, graph.pos=2, mean = data$mean, lower=data$lb, upper=data$ub,
+           align=(c("r", "l")),
+           xticks = seq(-25, 5, by=5),
+           zero=0,
+           graphwidth=unit(250,'mm'), lineheight=unit(15,'mm'),
+           col=fpColors(box="royalblue",line="darkblue", summary="royalblue", zero = "black"),
+           hrzl_lines = list("9" = gpar(col="grey", lty=2)),
+           boxsize=c(.3, .55, .3, .3, .3, .3, .3, .3, .3,.3, .55, .3, .3, .3, .3, .3, .3),
+           is.summary=c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, 
+                        TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
+           fn.ci_norm=c("fpDrawNormalCI", 
+                        "fpDrawDiamondCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI",
+                        "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI",
+                        "fpDrawDiamondCI", "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI", 
+                        "fpDrawNormalCI", "fpDrawNormalCI", "fpDrawNormalCI"),
+           xlab="Change in systolic blood pressure (mm Hg)",
+           txt_gp=fpTxtGp(ticks=gpar(fontfamily="Georgia", cex=1.2), 
+                          xlab=gpar(fontfamily="Georgia", cex=1.35),
+                          label=gpar(fontfamily="Georgia", cex=1.35)))
+
+dev.print(png, 'afig11_fifth_drug.png', width = 3600, height = 2200, res=200)
+
+#########################################################################
+#   appendix figure 8: component major cardiovascular event outcomes    #
+#########################################################################
+
+dat <- read.csv("afigure8_mce_component.csv")
+
+data <- structure(list(
+  mean=c(NA, t(dat$est[1:7]), NA, NA, NA, t(dat$est[8:14]), NA),
+  lower=c(NA, t(dat$lower[1:7]), NA, NA, NA, t(dat$lower[8:14]), NA),
+  upper=c(NA, t(dat$upper[1:7]), NA, NA, NA, t(dat$upper[8:14]), NA),
+  vars = c("mean", "lower", "upper"), 
+  class = "data.frame"))
+
+data
+
+lab <- rbind("Multivariable adjusted models", 
+             "Myocardial infarction", "Acute coronary syndrom", "Stroke", "Heart failure",
+             "Death from cardiovascular causes", "Death from any cause", "Composite outcome or death from any case",
+             "", "",
+             "Instrumental variable models", 
+             "Myocardial infarction", "Acute coronary syndrom", "Stroke", "Heart failure",
+             "Death from cardiovascular causes", "Death from any cause", "Composite outcome or death from any case",
+             "")
+
+n <- rbind("No. of patients", "9,092", "9,092", "9,092", "9,092", "9,092", "9,092", "9,092",
+           "", "",
+           "No. of patients", "9,092", "9,092", "9,092", "9,092", "9,092", "9,092", "9,092",
+           "")
+
+table <- cbind(lab, n)
+
+forestplot(table, graph.pos=2, mean = data$mean, lower=data$lower, upper=data$upper,
+           align=(c("r", "l")),
+           is.summary=c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, 
+                        TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
+           xticks = seq(-20, 15, by=5),
+           zero=0,
+           graphwidth=unit(250,'mm'), 
+           lineheight=unit(15,'mm'),
+           col=fpColors(box="royalblue",line="darkblue", summary="royalblue", zero = "black"),
+           hrzl_lines = list("10" = gpar(col="grey", lty=2)),
+           boxsize=c(.3),
+           xlab="Change in absolute risk (events per thousand person-years)",
+           txt_gp=fpTxtGp(ticks=gpar(fontfamily="Georgia", cex=1.2), 
+                          xlab=gpar(fontfamily="Georgia", cex=1.35),
+                          label=gpar(fontfamily="Georgia", cex=1.35)))
+
+dev.print(png, 'afig8_mce_components.png', width = 4000, height = 2200, res=200)
+
+####################################################################
+#   appendix figure 9: component serious adverse event outcomes    #
+####################################################################
+
+dat <- read.csv("afigure9_sae_component.csv")
+
+data <- structure(list(
+  mean=c(NA, t(dat$est[1:6]), NA, NA, NA, t(dat$est[7:12]), NA),
+  lower=c(NA, t(dat$lower[1:6]), NA, NA, NA, t(dat$lower[7:12]), NA),
+  upper=c(NA, t(dat$upper[1:6]), NA, NA, NA, t(dat$upper[7:12]), NA),
+  vars = c("mean", "lower", "upper"), 
+  class = "data.frame"))
+
+lab <- rbind("Multivariable adjusted models", 
+             "Hypotension", "Syncope", "Bradycardia", "Electrolyte imbalance", "Injurious fall", "Acute kidney injury / acute renal failure",
+             "", "",
+             "Instrumental variable models", 
+             "Hypotension", "Syncope", "Bradycardia", "Electrolyte imbalance", "Injurious fall", "Acute kidney injury / acute renal failure",
+             "")
+
+n <- rbind("No. of patients", "9,092", "9,092", "9,092", "9,092", "9,092", "9,092",
+           "", "",
+           "No. of patients", "9,092", "9,092", "9,092", "9,092", "9,092", "9,092",
+           "")
+
+table <- cbind(lab, n)
+
+forestplot(table, graph.pos=2, mean = data$mean, lower=data$lower, upper=data$upper,
+           align=(c("r", "l")),
+           is.summary=c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
+                        TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
+           xticks = seq(-10, 15, by=5),
+           zero=0,
+           graphwidth=unit(250,'mm'), 
+           lineheight=unit(15,'mm'),
+           col=fpColors(box="royalblue",line="darkblue", summary="royalblue", zero = "black"),
+           hrzl_lines = list("9" = gpar(col="grey", lty=2)),
+           boxsize=c(.3),
+           xlab= "Change in absolute risk (events per thousand person-years)",
+           txt_gp=fpTxtGp(ticks=gpar(fontfamily="Georgia", cex=1.2), 
+                          xlab=gpar(fontfamily="Georgia", cex=1.35),
+                          label=gpar(fontfamily="Georgia", cex=1.35)))
+
+dev.print(png, 'afig9_sae_components.png', width = 4000, height = 2200, res=200)
