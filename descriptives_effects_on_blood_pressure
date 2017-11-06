@@ -1,0 +1,1130 @@
+**************************************************************************
+** 						Code to reproduce results						**
+**************************************************************************
+
+**************************************
+** 		afig1: CONSORT diagram		**
+**************************************
+
+use collapsed, clear
+
+putexcel set afig1_consort, replace
+count
+loc row = 1
+putexcel A`row' = "enrolled" B`row'=matrix(r(N))
+
+loc row = `row' + 1
+reg sub_clinicalcvd 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female  
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black bmi 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black bmi hdl
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black bmi hdl smoker 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black bmi hdl smoker statin
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black bmi hdl smoker statin D 
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+loc row = `row' + 1
+reg sub_clinicalcvd sub_ckd screat age female race_black bmi hdl smoker statin D sbp_final
+loc row = `row' + 1
+putexcel A`row' = "`e(cmdline)'" B`row'=matrix(e(N))
+
+gen analytic = 0
+replace analytic = 1 if e(sample) == 1
+count if analytic != 1
+putexcel A`row' = "dropped" B`row'=matrix(r(N))
+
+keep if analytic == 1
+save analytic, replace
+saveold analytic_old, version(12) replace
+
+**************************************************************************
+** 			Program to create main and appendix results 				**
+**************************************************************************
+
+use analytic, clear
+loc x age female race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat 
+
+**************************************
+** 		Median follow-up			**
+**************************************
+
+sum maxtime, detail
+tabstat maxtime, statistics(median)
+dis 39/12 // median follow up is 39 months = 3.25 years
+
+**************************************************************************
+** 			Table 1: characteristics across baseline no. drugs			**
+**************************************************************************
+
+* pooled analyses:
+table1, vars(age contn\female bin\ race_black bin\ bmi contn\hdl contn\screat contn\statin bin\smoker bin\ sub_clinicalcvd bin\ sub_ckd bin\ sbp contn \ dbp contn) format(%9.1fc) saving(table1_pooled.xls,replace) // onecol plusminus
+
+* by baseline # meds
+table1, by(baseline) vars(age contn\female bin\ race_black bin\ bmi contn\hdl contn\screat contn\statin bin\smoker bin\ sub_clinicalcvd bin\ sub_ckd bin\ sbp contn\ dbp contn) format(%9.1fc ) saving(table1_baseline.xls,replace) // onecol plusminus
+
+**************************************************************************
+** 		Appendix Table 2: # drugs at final visit by randomization		**
+**************************************************************************
+
+table1, by(Z) vars(D cat) saving(atable2_drug_randomization.xls,replace) // onecol plusminus
+
+tab D if Z == 1 // 19% were on 4 drugs at study's end and 5% were on 5 drugs at study's end (in intensive group)
+tab D if Z == 0
+
+**************************************************************************
+** 						Instrument validity								**
+**************************************************************************
+
+loc y sbp_final
+
+**************************************************************
+**		Is it necessary? Are OLS estimates biased?			**
+**************************************************************
+
+loc d D
+ivregress 2sls `y' `x' (D=Z), vce(cluster newsiteid)
+estat endogenous
+
+********************************************************************************
+**		Condition #1: Is the instrument correlated with the exposure?		  **
+********************************************************************************
+
+**********************************************************
+*		appendix table 4: stratified first-stage 	 	 * 
+**********************************************************
+
+* pooled
+ivregress 2sls `y' `x' (D=Z), vce(cluster newsiteid)
+estat firststage
+
+* stratified
+forvalues i=0/3 {
+	ivregress 2sls `y' `x' (D=Z) if baseline == `i', vce(cluster newsiteid)
+	estat firststage
+	}
+
+**********************************************************
+*	appendix fig 2: Change in # drugs by randomization	 *
+**********************************************************	
+
+hist D_change if Z == 0, color(blue) freq discrete barw(0.8) ///
+title(Standard group) ///
+ytitle(Count) ///
+xtitle(Change in number of antihypertensive drug classes over study period) ///
+graphregion(color(white)) bcolor("36 113 156") ylabel(,nogrid) ///
+xscale(titlegap(*6)) yscale(titlegap(*10)) xlabel(-4(1)5)
+graph save "change_drug_standard.gph", replace
+
+hist D_change if Z == 1, color(blue) freq discrete barw(0.8) ///
+title(Intensive group) ///
+ytitle(Count) ///
+xtitle(Change in number of antihypertensive drug classes over study period) ///
+graphregion(color(white)) bcolor("22 68 94") ylabel(,nogrid) ///
+xscale(titlegap(*10)) yscale(titlegap(*10)) xlabel(-4(1)5)
+graph save "change_drug_intensive.gph", replace
+
+graph combine change_drug_standard.gph change_drug_intensive.gph ///
+, cols(1) iscale(.7273) ysize(8) graphregion(margin(zero))
+graph save "afig2_change_drug.gph", replace
+graph export "afig2_change_drug.png", replace width(200)
+
+**********************************************************************
+*   appendix table 3: Change in # drugs by randomization & baseline	 *
+**********************************************************************
+
+putexcel set atable3_change_drug_random_baseline, replace
+
+tab baseline D_change if Z == 0, matcell(x)
+tab baseline D_change if Z == 1, matcell(y)
+
+putexcel a1 = mat(x)
+putexcel a6 = mat(y)
+
+********************************************************************************
+**		Condition #2: Is the instrument random wrt potential outcomes?		  **
+********************************************************************************
+
+*************************************************************************
+*		appendix table 5: covariate balance across randomization		*
+*************************************************************************
+
+table1, by(Z) vars(age contn\female bin\ race_black bin\ bmi contn\hdl contn\screat contn\statin bin\smoker bin\ sub_clinicalcvd bin\ sub_ckd bin\ sbp contn\ dbp contn) format(%9.1fc ) saving(atable5_cov_balance.xls,replace) // onecol plusminus
+
+********************************************************************************
+**	Condition #3: Does instrument affect outcomes only through exposure?	  **
+********************************************************************************
+
+** sensitivity analyses are implemented below
+
+******************************************************************************
+**  Program to estimate incremental effects of each added drug on SBP		**
+******************************************************************************
+
+capture program drop increment
+program define increment, rclass
+	args y d x
+	* set up excel
+	loc row = 1
+	putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="p" E`row'="n" F`row'="SE"
+	loc row = `row' + 1
+	* (1) OLS estimates
+	** pooled
+	reg `y' `d' `x', vce(cluster newsiteid)
+	loc b = _b[`d']
+	loc se = _se[`d']
+	local low = (_b[`d'] - invttail(e(df_r), 0.025)*_se[`d'])
+	local high = (_b[`d'] - invttail(e(df_r), 0.975)*_se[`d'])
+	loc p = 2 * ttail(e(df_r), abs(_b[`d']/_se[`d']))
+	loc n = e(N)
+	matrix b`row' = (_b[`d'] , `low', `high', `p', `n', _se[`d'])
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	** stratified by baseline drug use
+	foreach i in 0 1 2 3 { 
+		reg `y' `d' `x' if (baseline == `i'), vce(cluster newsiteid)
+		loc b = _b[`d']
+		loc se = _se[`d']
+		local low = (_b[`d'] - invttail(e(df_r), 0.025)*_se[`d'])
+		local high = (_b[`d'] - invttail(e(df_r), 0.975)*_se[`d'])
+		loc p = 2 * ttail(e(df_r), abs(_b[`d']/_se[`d']))
+		loc n = e(N)
+		matrix b`row' = (_b[`d'] , `low', `high', `p', `n', _se[`d'])
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+		}
+	* (2) IV estimates
+	** pooled
+	ivregress 2sls `y' `x' (`d'=Z), vce(cluster newsiteid)
+	loc b = _b[`d']
+	loc se = _se[`d']
+	local low = (_b[`d'] + invnorm(0.025)*_se[`d'])
+	local high = (_b[`d'] + invnorm(0.975)*_se[`d'])
+	loc p = 2 * normal(-abs(_b[`d']/_se[`d']))
+	loc n = e(N)
+	matrix b`row' = (_b[`d'] , `low', `high', `p', `n', _se[`d'])
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	** stratified by baseline drug use
+	foreach i in 0 1 2 3 { 
+		ivregress 2sls `y' `x' (`d'=Z) if (baseline == `i'), vce(cluster newsiteid)
+		loc b = _b[`d']
+		loc se = _se[`d']
+		local low = (_b[`d'] + invnorm(0.025)*_se[`d'])
+		local high = (_b[`d'] + invnorm(0.975)*_se[`d'])
+		loc p = 2 * normal(-abs(_b[`d']/_se[`d']))
+		loc n = e(N)
+		matrix b`row' = (_b[`d'] , `low', `high', `p', `n', _se[`d'])
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+		}
+end	
+
+******************************************************************************
+** 		Fig 1: incremental effects of each added drug on systolic BP		**
+******************************************************************************
+
+putexcel set fig1, replace
+increment sbp_final D "`x'"
+
+******************************************************************************
+** 			Table 2: pooled SBP effects across patient subgroups			**
+******************************************************************************
+
+loc y sbp_final
+loc x age female race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat 
+
+putexcel set table2, replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+
+***** OLS estimates *******
+
+** pooled estimates
+reg `y' D `x', vce(cluster newsiteid)
+loc n = e(N)
+local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+matrix b`row' = _b[D] , `low', `high', `n'
+putexcel A`row'=matrix(b`row')
+loc row = `row' + 1
+
+** stratified analyses
+loc w age_75
+forvalues i = 0/1 {
+	loc x female race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat 
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w female
+forvalues i = 0/1 {
+	loc x age race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w race_black
+forvalues i = 0/1 {
+	loc x age female bmi smoker sub_clinicalcvd sub_ckd hdl statin screat
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w bmi_35
+forvalues i = 0/1 {
+	loc x age female race_black smoker sub_clinicalcvd sub_ckd hdl statin screat
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w smoker
+forvalues i = 0/1 {
+	loc x age female race_black bmi sub_clinicalcvd sub_ckd hdl statin screat
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w sub_clinicalcvd
+forvalues i = 0/1 {
+	loc x age female race_black bmi smoker sub_ckd hdl statin screat
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w sub_ckd
+forvalues i = 0/1 {
+	loc x age female race_black bmi smoker sub_clinicalcvd hdl statin screat
+	reg `y' D `x' if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+***** IV estimates *******
+
+** pooled estimates
+ivregress 2sls `y' `x' (D=Z), vce(cluster newsiteid)
+loc n = e(N)
+local low = (_b[D] + invnorm(0.025)*_se[D])
+local high = (_b[D] + invnorm(0.975)*_se[D])
+matrix b`row' = _b[D] , `low', `high', `n'
+putexcel A`row'=matrix(b`row')
+loc row = `row' + 1
+
+** stratified analyses
+* age
+loc y sbp_final
+loc w age_75
+forvalues i = 0/1 {
+	loc x female race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat 
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = _b[D] + invnorm(0.025)*_se[D]
+	local high = _b[D] + invnorm(0.975)*_se[D]
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+* sex
+loc w female
+forvalues i = 0/1 {
+	loc x age race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w race_black
+forvalues i = 0/1 {
+	loc x age female bmi smoker sub_clinicalcvd sub_ckd hdl statin screat
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w bmi_35
+forvalues i = 0/1 {
+	loc x age female race_black smoker sub_clinicalcvd sub_ckd hdl statin screat
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w smoker
+forvalues i = 0/1 {
+	loc x age female race_black bmi sub_clinicalcvd sub_ckd hdl statin screat
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w sub_clinicalcvd
+forvalues i = 0/1 {
+	loc x age female race_black bmi smoker sub_ckd hdl statin screat
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+loc w sub_ckd
+forvalues i = 0/1 {
+	loc x age female race_black bmi smoker sub_clinicalcvd hdl statin screat
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `i'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+}
+
+******************************************************************************
+** 		Appendix Figure 3: SBP effects across baseline + pt subgroups		**
+******************************************************************************
+
+loc y sbp_final
+
+* age
+loc w age_75
+loc x female race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat 
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+* sex
+loc w female
+loc x age race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+* race
+loc w race_black
+loc x age female bmi smoker sub_clinicalcvd sub_ckd hdl statin screat
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+* obesity
+loc w bmi_35
+loc x age female race_black smoker sub_clinicalcvd sub_ckd hdl statin screat
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+* smoking status
+loc w smoker
+loc x age female race_black bmi sub_clinicalcvd sub_ckd hdl statin screat 
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+* history of CVD
+loc w sub_clinicalcvd
+loc x age female race_black bmi smoker sub_ckd hdl statin screat
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+* history of CKD
+loc w sub_ckd
+loc x age female race_black bmi smoker sub_clinicalcvd hdl statin screat
+putexcel set afig3_`w', replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="n"
+loc row = `row' + 1
+forvalues j = 0/1 {
+	ivregress 2sls `y' `x' (D=Z) if (`w' == `j'), vce(cluster newsiteid)
+	loc n = e(N)
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	matrix b`row' = _b[D] , `low', `high', `n'
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	forvalues i = 0/3 { 
+		ivregress 2sls `y' `x' (D=Z) if (`w' == `j' & baseline == `i'), vce(cluster newsiteid)
+		loc n = e(N)
+		local low = (_b[D] + invnorm(0.025)*_se[D])
+		local high = (_b[D] + invnorm(0.975)*_se[D])
+		matrix b`row' = _b[D] , `low', `high', `n'
+		putexcel A`row'=matrix(b`row')
+		loc row = `row' + 1
+	}
+}
+
+********************************************************************************
+*		Alternative specifications of exposures to antihypertensive drugs	   *
+********************************************************************************
+
+loc x age female race_black bmi smoker sub_clinicalcvd sub_ckd hdl statin screat 
+
+**********************************************************
+** 	Appendix Fig 4: Effects of # drugs after 3-months	**
+**********************************************************
+
+putexcel set afig4_three_month, replace
+increment sbp_3 D_3 "`x'"
+
+**********************************************************
+** 	Appendix Fig 5: Effects of mean # drug over study	**
+**********************************************************
+
+putexcel set afig5_mean_study, replace
+increment sbp_final D_mean "`x'"
+
+******************************************************************************
+** 		Appendix Table 6: Sensitivity analyses of exposure on SBP 			**
+******************************************************************************
+
+mat a = J(4,3,0)
+loc n = 1
+
+**** OLS estimates ****
+
+* exposure = # drug classes at 3 month visit
+loc d D_3
+reg sbp_3 `d' `x', vce(cluster newsiteid)
+loc b = _b[`d']
+loc se = _se[`d']
+local low = (_b[`d'] - invttail(e(df_r), 0.025)*_se[`d'])
+local high = (_b[`d'] - invttail(e(df_r), 0.975)*_se[`d'])
+mat a[`n',1] = _b[`d'] , `low', `high'
+loc n = `n' + 1
+
+* exposure = mean # drug classes over study period
+loc d D_mean
+reg sbp_final `d' `x', vce(cluster newsiteid)
+loc b = _b[`d']
+loc se = _se[`d']
+local low = (_b[`d'] - invttail(e(df_r), 0.025)*_se[`d'])
+local high = (_b[`d'] - invttail(e(df_r), 0.975)*_se[`d'])
+mat a[`n',1] = _b[`d'] , `low', `high'
+loc n = `n' + 1
+
+**** IV estimates ****
+
+* exposure = # drug classes at 3 month visit
+loc d D_3
+ivregress 2sls sbp_3 `x' (`d'=Z), vce(cluster newsiteid)
+loc b = _b[`d']
+loc se = _se[`d']
+local low = (_b[`d'] + invnorm(0.025)*_se[`d'])
+local high = (_b[`d'] + invnorm(0.975)*_se[`d'])
+mat a[`n',1] = _b[`d'] , `low', `high'
+loc n = `n' + 1
+
+* exposure = mean # drug classes over study period
+loc d D_mean
+ivregress 2sls sbp_final `x' (`d'=Z), vce(cluster newsiteid)
+loc b = _b[`d']
+loc se = _se[`d']
+local low = (_b[`d'] + invnorm(0.025)*_se[`d'])
+local high = (_b[`d'] + invnorm(0.975)*_se[`d'])
+mat a[`n',1] = _b[`d'] , `low', `high'
+
+mat li a
+svmat a
+
+forvalues i = 1/3 {
+	replace a`i'=round(a`i',0.1)
+}
+
+gen col =strofreal(a1, "%04.1fc") + " (" + strofreal(a2, "%04.1fc") + ", " + strofreal(a3, "%04.1fc") + ")"
+
+gen subgroup = _n
+lab def subgroup 1 "OLS: 3-month visit" 2 "OLS: mean no. drugs" 3 "IV: 3-month visit" 4 "IV: mean no. drugs"
+lab val subgroup subgroup
+local rowcount=rowsof(a)
+export excel subgroup col using "atable6_alt_exposure" in 1/`rowcount', firstrow(varlabels) replace
+drop col subgroup a1-a3
+lab drop subgroup
+
+******************************************************************************
+** 		Appendix Table 7: Effect on # blood pressure measuresments			**
+******************************************************************************
+
+loc n = 1
+foreach d in D D_mean {
+	* (1) OLS estimates
+	reg sbp_count `d' `x', vce(cluster newsiteid)
+	loc b = _b[`d']
+	loc se = _se[`d']
+	local low = (_b[`d'] - invttail(e(df_r), 0.025)*_se[`d'])
+	local high = (_b[`d'] - invttail(e(df_r), 0.975)*_se[`d'])
+	mat a`n' = _b[`d'] , `low', `high'
+	loc n = `n' + 1
+	* (2) IV estimates
+	ivregress 2sls sbp_count `x' (`d'=Z), vce(cluster newsiteid)
+	loc b = _b[`d']
+	loc se = _se[`d']
+	local low = (_b[`d'] + invnorm(0.025)*_se[`d'])
+	local high = (_b[`d'] + invnorm(0.975)*_se[`d'])
+	mat a`n' = _b[`d'] , `low', `high'
+	loc n = `n' + 1
+}
+
+mat a = a1 \ a3 \ a2 \ a4
+
+svmat a
+
+forvalues i = 1/3 {
+	replace a`i'=round(a`i',0.01)
+}
+
+gen col =strofreal(a1, "%04.2fc") + " (" + strofreal(a2, "%04.2fc") + ", " + strofreal(a3, "%04.2fc") + ")"
+
+gen subgroup = _n
+lab def subgroup 1 "OLS - final #" 2 "OLS - mean #" 3 "IV - final #" 4 "IV - mean #"
+lab val subgroup subgroup
+local rowcount=rowsof(a)
+export excel subgroup col using "atable7_sbp_count" in 1/`rowcount', firstrow(varlabels) replace
+drop subgroup col a1-a3
+lab drop subgroup
+
+******************************************************************************
+** 	Appendix Fig 7: incremental effects of each added drug on diastolic BP	**
+******************************************************************************
+
+putexcel set afig7_dbp, replace
+increment dbp_final D "`x'"
+
+********************************************************************************
+**		Appendix Tables 9-10: compare incremental effects across strata		  **
+********************************************************************************
+
+* program to compare incremental effect estimates across baseline strata
+capture program drop suest_iv
+program define suest_iv, rclass
+	args cmd y x w i j
+	** compare estimates across baseline strata (i.e., adding 2nd vs. 1st drug)
+	if "`cmd'" == "baseline" {
+		* estimate 2sls for baseline i
+		reg D Z `x' if (baseline == `i')
+		predict D_hat, xb
+		reg `y' D_hat `x' if (baseline == `i')
+		est store a
+		* estimate 2sls for baseline j
+		reg D Z  `x' if (baseline == `j')
+		predict D_hat2, xb
+		reg `y' D_hat2 `x' if (baseline == `j')
+		est store b
+		* use suest to compare estimates from unrelated models
+	}
+	** compare pooled estimates across subgroups (i.e., incremental effect for men vs. women)
+	if "`cmd'" == "sub" {
+		* estimate 2sls for subgroup w=0
+		reg D Z `x' if (`w' == 0)
+		predict D_hat, xb
+		reg `y' D_hat `x' if (`w' == 0)
+		est store a
+		* estimate 2sls for subgroup w=1
+		reg D Z `x' if (`w' == 1)
+		predict D_hat2, xb
+		reg `y' D_hat2 `x' if (`w' == 1)
+		est store b
+	}
+	** compare estimates across subgroups (i.e., adding 1st drug for men vs. 1st drug for women)
+	if "`cmd'" == "base_sub" {
+		* estimate 2sls for baseline=i & subgroup w=0 
+		reg D Z `x' if (baseline == `i' & `w' == 0)
+		predict D_hat, xb
+		reg `y' D_hat `x' if (baseline == `i' & `w' == 0)
+		est store a
+		* estimate 2sls for baselin=i & subgroup w=01
+		reg D Z `x' if (baseline == `i' & `w' == 1)
+		predict D_hat2, xb
+		reg `y' D_hat2 `x' if (baseline == `i' & `w' == 1)
+		est store b
+	}
+	* use suest to compare estimates from unrelated models
+	suest a b
+	* test whether linear combination /= 0 to determine if estimates differ from one another
+	lincom [b_mean]_b[D_hat] - [a_mean]_b[D_hat]
+	mat a = r(estimate), r(estimate) - invnorm(0.975)*r(se), r(estimate) + invnorm(0.975)*r(se), 2 * normal(-abs(r(estimate)/r(se)))
+	drop D_hat D_hat2
+end
+
+// NOTES:
+// all 2sls are "by hand" in this sensitivity analysis
+// we do this because we are unaware of another method to compare IV estimates
+// 2sls "by hand": 
+	// 1) underestimate statistical uncertainty of the IV regression;  
+	// 2) yield overly precise IV estimates within each strata;
+	// 3) yield overly precise differences in IV estimates across strata (due to reason #2)
+	// 4) as a result, if we fail to reject the null (no difference across strata), we are confident this is the case
+	
+*****************************************************************************
+*		Appendix Table 9: Compare effects across baseline strata			*
+*****************************************************************************
+
+* objective: determine whether effects vary when adding 1st, 2nd, 3rd, or 4+ drugs
+* approach #1: compare effects when adding 2nd drug to effects when adding 1st drug, etc.
+
+mat b = J(6,16,0)
+
+loc n = 2
+
+foreach y in sbp_final dbp_final {
+	loc j = 1
+	forvalues i = 0(1)2 {	
+		regress `y' D `x' if baseline == `i'
+		est store a
+		regress `y' D `x' if baseline == `i' + 1
+		est store b
+		suest a b
+		lincom [b_mean]_b[D] - [a_mean]_b[D]
+		mat b[`n',`j'] =  r(estimate), r(estimate) - invnorm(0.975)*r(se), r(estimate) + invnorm(0.975)*r(se), 2 * normal(-abs(r(estimate)/r(se)))
+		loc j = `j' + 4
+	}
+	qui regress `y' D `x' if baseline == 0
+	est store a
+	qui regress `y' D `x' if baseline == 3
+	est store b
+	suest a b
+	lincom [b_mean]_b[D] - [a_mean]_b[D]
+	mat b[`n',`j'] =  r(estimate), r(estimate) - invnorm(0.975)*r(se), r(estimate) + invnorm(0.975)*r(se), 2 * normal(-abs(r(estimate)/r(se)))
+	loc n = `n' + 1
+}
+
+loc n = `n' + 1
+foreach y in sbp_final dbp_final {
+	loc j = 1
+	forvalues i = 0/2 {
+		loc q = `i'
+		loc r = `i' + 1
+		suest_iv baseline `y' "`x'" w `q' `r'
+		mat b[`n',`j'] = a
+		loc j = `j' + 4
+	}
+	loc q = 0
+	loc r = 3
+	suest_iv baseline `y' "`x'" w `q' `r'
+	mat b[`n',`j'] = a
+	loc j = `j' + 4
+	loc n = `n' + 1
+}
+
+mat li b
+
+mat a = b
+
+svmat a
+
+loc j = 1
+loc k = 2
+loc a = 1
+loc b = 2
+loc c = 3
+loc d = 4
+foreach i in 1 5 9 13 {
+	replace a`a'=round(a`a',0.1)
+	replace a`b'=round(a`b',0.1)
+	replace a`c'=round(a`c',0.1)
+	replace a`d'=round(a`d',0.001)
+	gen col`j'=strofreal(a`a', "%02.1f") + " (" + strofreal(a`b', "%02.1f") + ", " + strofreal(a`c', "%02.1f") + ")"
+	gen col`k'=strofreal(a`d', "%04.3f")
+	loc j = `j' + 2
+	loc k = `k' + 2
+	loc a = `a' + 4
+	loc b = `b' + 4
+	loc c = `c' + 4
+	loc d = D + 4
+}
+
+gen subgroup = _n
+lab def subgroup 1 "OLS" 2 "SBP" 3 "DBP" 4 "IV" 5 "SBP" 6 "DBP"
+lab val subgroup subgroup
+local rowcount=rowsof(a)
+export excel subgroup col1-col8 using "atable9_differences_baseline" in 1/`rowcount', firstrow(varlabels) replace
+drop subgroup col1-col8 a1-a16
+lab drop subgroup
+
+* objective: determine whether effects vary when adding 1st, 2nd, 3rd, or 4+ drugs
+* approach #2: estimate interaction model (for OLS but not IV)
+
+reg sbp_final (c.D)##(c.baseline) `x', vce(cluster newsiteid)
+outreg2 using atable9_interaction.doc, stats(coef ci) dec(2) sideway replace
+
+reg dbp_final (c.D)##(c.baseline) `x', vce(cluster newsiteid)
+outreg2 using atable9_interaction.doc, stats(coef ci) dec(2) sideway append
+
+*****************************************************************************
+*	Appendix Table 10: Compare effects across baseline + pt subgroups		*
+*****************************************************************************
+
+loc y sbp_final
+mat b = J(28,20,0)
+loc n = 1
+foreach w in age_75 female race_black bmi_35 smoker sub_clinicalcvd sub_ckd {
+	loc i = 1
+	* stratified by baseline drug use and patient subgroup (e.g., effect of adding 1st drug in men vs. women)
+	forvalues j = 0/3 {	
+		mat b[`n',`i'] = J(1,4,0)
+		loc n = `n' + 1
+		ivregress 2sls `y' `x' (D=Z) if (`w' == 0 & baseline == `j'), vce(cluster newsiteid)
+		mat b[`n',`i'] = _b[D], _b[D] + invnorm(0.025)*_se[D], _b[D] - invnorm(0.025)*_se[D], 2 * normal(-abs(_b[D]/_se[D]))
+		loc n = `n' + 1
+		ivregress 2sls `y' `x' (D=Z) if (`w' == 1 & baseline == `j'), vce(cluster newsiteid)
+		mat b[`n',`i'] = _b[D], _b[D] + invnorm(0.025)*_se[D], _b[D] - invnorm(0.025)*_se[D], 2 * normal(-abs(_b[D]/_se[D]))
+		loc n = `n' + 1
+		suest_iv base_sub `y' "`x'" `w' `j' j
+		mat b[`n',`i'] = a
+		loc n = `n' - 3 
+		loc i = `i' + 4
+	}
+	loc n = `n' + 4
+}
+
+mat li b
+
+mat a = b
+
+svmat a
+
+loc j = 1
+loc k = 2
+loc a = 1
+loc b = 2
+loc c = 3
+loc d = 4
+foreach i in 1 5 9 13 {
+	replace a`a'=round(a`a',0.1)
+	replace a`b'=round(a`b',0.1)
+	replace a`c'=round(a`c',0.1)
+	replace a`d'=round(a`d',0.001)
+	gen col`j'=strofreal(a`a', "%02.1f") + " (" + strofreal(a`b', "%02.1f") + ", " + strofreal(a`c', "%02.1f") + ")"
+	gen col`k'=strofreal(a`d', "%04.3f")
+	loc j = `j' + 2
+	loc k = `k' + 2
+	loc a = `a' + 4
+	loc b = `b' + 4
+	loc c = `c' + 4
+	loc d = D + 4
+}
+
+gen subgroup = _n
+lab def subgroup 1 "Age" 5 "Female" 9 "Black" 13 "Obesity" 17 "Smoker" 21 "CVD" 25 "CKD"
+lab val subgroup subgroup
+local rowcount=rowsof(a)
+export excel subgroup col1-col8 using "atable10_differences_baseline_pt" in 1/`rowcount', firstrow(varlabels) replace
+drop subgroup col1-col8 a1-a16
+lab drop subgroup
+
+******************************************************************************
+** 	Appendix Fig 10: incremental effects w/no adjustment for covariates		**
+******************************************************************************
+
+putexcel set afig10_unadjusted, replace
+increment sbp_final D
+
+******************************************************************************
+** 	Appendix Fig 11: incremental effects when fifth or more drugs added		**
+******************************************************************************
+
+putexcel set afig11_fifth_drug, replace
+loc row = 1
+putexcel A`row'="coef" B`row'="low" C`row'="high" D`row'="p" E`row'="n" F`row'="SE"
+
+loc row = `row' + 1
+
+* OLS estimates
+reg `y' D `x', vce(cluster newsiteid)
+loc b = _b[D]
+loc se = _se[D]
+local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+loc p = 2 * ttail(e(df_r), abs(_b[D]/_se[D]))
+loc n = e(N)
+matrix b`row' = _b[D] , `low', `high', `p', `n', _se[D])
+putexcel A`row'=matrix(b`row')
+loc row = `row' + 1
+
+foreach i in 0 1 2 3 4 { 
+	reg `y' D `x' if (baseline2 == `i'), vce(cluster newsiteid)
+	loc b = _b[D]
+	loc se = _se[D]
+	local low = (_b[D] - invttail(e(df_r), 0.025)*_se[D])
+	local high = (_b[D] - invttail(e(df_r), 0.975)*_se[D])
+	loc p = 2 * ttail(e(df_r), abs(_b[D]/_se[D]))
+	loc n = e(N)
+	matrix b`row' = _b[D] , `low', `high', `p', `n', _se[D])
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	}
+
+* iv estimates
+ivregress 2sls `y' `x' (D=Z), vce(cluster newsiteid)
+loc b = _b[D]
+loc se = _se[D]
+local low = (_b[D] + invnorm(0.025)*_se[D])
+local high = (_b[D] + invnorm(0.975)*_se[D])
+loc p = 2 * normal(-abs(_b[D]/_se[D]))
+loc n = e(N)
+matrix b`row' = _b[D] , `low', `high', `p', `n', _se[D])
+putexcel A`row'=matrix(b`row')
+loc row = `row' + 1
+
+foreach i in 0 1 2 3 4 { 
+	ivregress 2sls `y' `x' (D=Z) if (baseline2 == `i'), vce(cluster newsiteid)
+	loc b = _b[D]
+	loc se = _se[D]
+	local low = (_b[D] + invnorm(0.025)*_se[D])
+	local high = (_b[D] + invnorm(0.975)*_se[D])
+	loc p = 2 * normal(-abs(_b[D]/_se[D]))
+	loc n = e(N)
+	matrix b`row' = _b[D] , `low', `high', `p', `n', _se[D])
+	putexcel A`row'=matrix(b`row')
+	loc row = `row' + 1
+	}
+
+******************************************************************************
+** 	Appendix Table 11: reduced-form analysis of effect of randomization		**
+******************************************************************************
+
+loc n = 1
+foreach y in D sbp_final {
+	* pooled:
+	reg `y' Z `x', vce(cluster newsiteid)
+	loc b = _b[Z]
+	loc se = _se[Z]
+	local low = (_b[Z] - invttail(e(df_r), 0.025)*_se[Z])
+	local high = (_b[Z] - invttail(e(df_r), 0.975)*_se[Z])
+	mat a`n' = _b[Z] , `low', `high'
+	loc n = `n' + 1
+	* stratified:
+	foreach i in 0 1 2 3 { 
+		reg `y' Z `x' if (baseline == `i'), vce(cluster newsiteid)
+		loc b = _b[Z]
+		loc se = _se[Z]
+		local low = (_b[Z] - invttail(e(df_r), 0.025)*_se[Z])
+		local high = (_b[Z] - invttail(e(df_r), 0.975)*_se[Z])
+		mat a`n' = _b[Z] , `low', `high'
+		loc n = `n' + 1
+		}
+}
+	
+mat c = (a1 \ a2 \ a3 \ a4 \ a5)
+mat d = (a6 \ a7 \ a8 \ a9 \ a10)
+mat b = c,d
+
+svmat b
+
+gen subgroup=_n
+
+lab def subgroup ///
+1 "Overall effect of randomization status" ///
+2 "Effect among patients on zero drugs at baseline" ///
+3 "Effect among patients on 1 drug at baseline" ///
+4 "Effect among patients on 2 drugs at baseline" ///
+5 "Effect among patients on 3 or more drugs at baseline"
+
+lab val subgroup subgroup
+
+forvalues i = 1/6 {
+	replace b`i'=round(b`i',0.1)
+}
+
+gen col1=strofreal(b1, "%04.1fc")+" ("+strofreal(b2, "%04.1fc") + ", " + strofreal(b3, "%04.1fc") + ")"
+gen col2=strofreal(b4, "%04.1fc")+" ("+strofreal(b5, "%04.1fc") + ", " + strofreal(b6, "%04.1fc") + ")"
+
+lab var col1 "Change in number of antihypertensive drug classes"	
+lab var col2 "Change in systolic blood pressure (mm Hg)"	
+
+local rowcount=rowsof(b) 
+export excel subgroup col1-col2 using "atable11_reduced_form" in 1/`rowcount', firstrow(varlabels) replace
+drop subgroup col1-col2 b1-b6
+lab drop subgroup
+
+log close
