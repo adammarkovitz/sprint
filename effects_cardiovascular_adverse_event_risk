@@ -1,0 +1,827 @@
+library(foreign)
+library(parallel)
+library(timereg)
+library(boot)
+
+setwd("/Users/Adam/GD/SPRINT/github")
+
+boot.fig <- function(bootresult) {
+  est = apply(bootresult, 1, mean)
+  ci = t(apply(bootresult, 1, quantile, prob=c(0.025, 0.975)))
+  lower = ci[1:2, "2.5%"]
+  upper = ci[1:2, "97.5%"]
+  out = cbind(est, lower, upper)
+  out*1000 ## estimates in risk per 1,000 patient-years
+}
+
+########################################################################################
+##    figure 2: incremental effects on composite major cardiovascular events (mce)    ##
+########################################################################################
+
+clus <- makeCluster(detectCores()-1) # cluster of multiple cores for parallelizing
+clusterEvalQ(clus, library('timereg'))
+
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  
+  ## standard multivariable model: predict mce risk/survival using observed no. drug classes (D) + covariates
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum)
+ 
+   ## instrumental variable model
+  # first-stage: predict no. drug classes (D) using randomization status + covariates
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted no. drugs (D)
+  # main-stage: predict mce risk/survival using predicted no. drug classes (from first-stage) + covariates
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  
+  # collect point estimates (will bootstrap estimates to create bootstrapped confidence intervals)
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+## pooled estimates
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary) # define event
+clusterExport(clus, c('fun.aareg', 'd')) # export cluster
+b <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b.est <- boot.fig(b)
+b.est
+
+## 0 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$baseline==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b0 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b0.est <- boot.fig(b0)
+
+## 1 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$baseline==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b1 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b1.est <- boot.fig(b1)
+
+## 2 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$baseline==2,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b2 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b2.est <- boot.fig(b2)
+
+## 3 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$baseline==3,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b3 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b3.est <- boot.fig(b3)
+
+data.mce <- data.frame(rbind(b.est[1,], b0.est[1,], b1.est[1,], b2.est[1,], b3.est[1,],
+                             b.est[2,], b0.est[2,], b1.est[2,], b2.est[2,], b3.est[2,]))
+data.mce
+write.csv(data.mce, file = "figure2_mce.csv")
+
+#################################################################
+##    fig 3: incremental effect of antihypertensives on SAE    ##
+#################################################################
+
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+## pooled estimates
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))
+b <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b.est <- boot.fig(b)
+b.est
+
+## 0 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$baseline==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b0 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b0.est <- boot.fig(b0)
+
+## 1 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$baseline==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b1 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b1.est <- boot.fig(b1)
+
+## 2 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$baseline==2,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b2 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b2.est <- boot.fig(b2)
+
+## 3 antihypertensive meds at baseline
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$baseline==3,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+b3 = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b3.est <- boot.fig(b3)
+
+data.sae <- data.frame(rbind(b.est[1,], b0.est[1,], b1.est[1,], b2.est[1,], b3.est[1,],
+                             b.est[2,], b0.est[2,], b1.est[2,], b2.est[2,], b3.est[2,]))
+data.sae
+write.csv(data.sae, file = "figure3_sae.csv")
+
+########################################
+##              MCE components        ##
+########################################
+
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+clusterExport(clus, c('fun.aareg', 'd'))
+
+##############################
+##            MI            ##
+##############################
+d$S <- Surv(I(d$t_mi/365.25), d$event_mi)
+clusterExport(clus, c('fun.aareg', 'd'))  
+mi <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+mi <- boot.fig(mi)
+
+##############################
+##           ACS           ##
+##############################
+d$S <- Surv(I(d$t_nonmiacs/365.25), d$event_nonmiacs)
+clusterExport(clus, c('fun.aareg', 'd'))  
+acs = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+acs <- boot.fig(acs)
+
+##############################
+##           Stroke         ##
+##############################
+d$S <- Surv(I(d$t_stroke/365.25), d$event_stroke)
+clusterExport(clus, c('fun.aareg', 'd'))  
+stroke = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+stroke <- boot.fig(stroke)
+
+##############################
+##      heart failure       ##
+##############################
+d$S <- Surv(I(d$t_hf/365.25), d$event_hf)
+clusterExport(clus, c('fun.aareg', 'd'))  
+hf = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+hf <- boot.fig(hf)
+
+##############################
+##      cvd mortality      ##
+##############################
+d$S <- Surv(I(d$t_cvddeath/365.25), d$event_cvddeath)
+clusterExport(clus, c('fun.aareg', 'd'))  
+death.cvd = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+death.cvd <- boot.fig(death.cvd)
+
+##############################
+##      all mortality        ##
+##############################
+d$S <- Surv(I(d$t_death/365.25), d$event_death)
+clusterExport(clus, c('fun.aareg', 'd'))  
+death = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+death <- boot.fig(death)
+
+##############################
+##    composite or death    ##
+##############################
+d$S <- Surv(I(d$t_primaryordeath/365.25), d$event_primaryordeath)
+clusterExport(clus, c('fun.aareg', 'd'))  
+death.mce = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+death.mce <- boot.fig(death.mce)
+
+##############################
+##      collect results     ##
+##############################
+mce.all <- data.frame(rbind(mi[1,], acs[1,], stroke[1,], hf[1,], death.cvd[1,], death[1,], death.mce[1,],
+                            mi[2,], acs[2,], stroke[2,], hf[2,], death.cvd[2,], death[2,], death.mce[2,]))
+mce.all
+write.csv(mce.all, file = "afigure8_mce_component.csv")
+
+########################################
+##              SAE components        ##
+########################################
+
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+clusterExport(clus, c('fun.aareg', 'd'))
+
+##############################
+##        hypotension       ##
+##############################
+d$S <- Surv(I(d$hyp_sae_days/365.25), d$hyp_sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))  
+hypotension <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+hypotension <- boot.fig(hypotension)
+
+##############################
+##          syncope        ##
+##############################
+d$S <- Surv(I(d$syn_sae_days/365.25), d$syn_sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))  
+syncope = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+syncope <- boot.fig(syncope)
+
+##############################
+##        bradycardia       ##
+##############################
+d$S <- Surv(I(d$bra_sae_days/365.25), d$bra_sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))  
+bradycardia = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+bradycardia <- boot.fig(bradycardia)
+
+##############################
+##        electrolyte       ##
+##############################
+d$S <- Surv(I(d$ele_sae_days/365.25), d$ele_sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))  
+elec = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+elec <- boot.fig(elec)
+
+##############################
+##           fall          ##
+##############################
+d$S <- Surv(I(d$inj_sae_days/365.25), d$inj_sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))  
+fall = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+fall <- boot.fig(fall)
+
+##############################
+##          AKI/ARF         ##
+##############################
+d$S <- Surv(I(d$aki_sae_days/365.25), d$aki_sae_evnt)
+clusterExport(clus, c('fun.aareg', 'd'))  
+renal = parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+renal <- boot.fig(renal)
+
+### collect results
+sae.all <- data.frame(rbind(hypotension[1,], syncope[1,], bradycardia[1,], elec[1,], fall[1,], renal[1,],
+                            hypotension[2,], syncope[2,], bradycardia[2,], elec[2,], fall[2,], renal[2,]))
+sae.all
+write.csv(sae.all, file = "afigure9_sae_component.csv")
+
+########################################################################################
+##      table 2: subgroup analysis of effects on cardiovascular and adverse events    ##
+########################################################################################
+
+boot.est <- function(bootresult) {
+  est = apply(bootresult, 1, mean)
+  ci = t(apply(bootresult, 1, quantile, prob=c(0.025, 0.975)))
+  out = cbind(est, ci)
+  out = format(round(out*1000,1), nsmall=1) # format for table display
+}
+
+##################################
+##  major cardiovascular events ##
+##################################
+
+## age
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$age_75==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+age0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+age0 <- boot.est(age0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$age_75==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+age1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+age1 <- boot.est(age1.est)
+
+## female
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$female==0,]
+clusterExport(clus, c('fun.aareg', 'd'))
+female0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+female0 <- boot.est(female0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$female==1,]
+clusterExport(clus, c('fun.aareg', 'd'))
+female1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+female1 <- boot.est(female1.est)
+
+## black
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + female + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$race_black==0,] 
+clusterExport(clus, c('fun.aareg', 'd'))  
+black0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+black0 <- boot.est(black0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$race_black==1,] 
+clusterExport(clus, c('fun.aareg', 'd'))  
+black1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+black1 <- boot.est(black1.est)
+
+## obese
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$bmi_35==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+obese0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+obese0 <- boot.est(obese0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$bmi_35==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+obese1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+obese1 <- boot.est(obese1.est)
+
+
+## smoker
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$smoker==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+smoker0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+smoker0 <- boot.est(smoker0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$smoker==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+smoker1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+smoker1 <- boot.est(smoker1.est)
+
+## CVD
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$sub_clinicalcvd==0,] 
+clusterExport(clus, c('fun.aareg', 'd'))  
+cvd0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+cvd0 <- boot.est(cvd0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$sub_clinicalcvd==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+cvd1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+cvd1 <- boot.est(cvd1.est)
+
+## CKD
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce + sub_clinicalcvd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z + sub_clinicalcvd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$sub_ckd==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+ckd0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+ckd0 <- boot.est(ckd0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+d <- d[d$sub_ckd==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+ckd1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+ckd1 <- boot.est(ckd1.est)
+
+data.mce.sub <- data.frame(rbind(age0[1,], age1[1,], female0[1,], female1[1,], black0[1,], black1[1,], 
+                                 obese0[1,], obese1[1,], smoker0[1,], smoker1[1,], cvd0[1,], cvd1[1,], ckd0[1,], ckd1[1,],
+                                 age0[2,], age1[2,], female0[2,], female1[2,], black0[2,], black1[2,], 
+                                 obese0[2,], obese1[2,], smoker0[2,], smoker1[2,], cvd0[2,], cvd1[2,], ckd0[2,], ckd1[2,]))
+
+data.mce.sub
+write.csv(data.mce.sub, file = "table2_mce.csv")
+
+######################################
+##  subgroup:serious adverse event  ##
+######################################
+
+## age
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + sub_ckd + screat + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + sub_ckd + screat + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$age_75==0,]
+clusterExport(clus, c('fun.aareg', 'd'))
+age0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+age0 <- boot.est(age0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$age_75==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+age1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+age1 <- boot.est(age1.est)
+
+## female
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + sub_ckd + screat + age + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + sub_ckd + screat + age + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$female==0,]
+clusterExport(clus, c('fun.aareg', 'd'))
+female0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+female0 <- boot.est(female0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$female==1,]
+clusterExport(clus, c('fun.aareg', 'd'))
+female1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+female1 <- boot.est(female1.est)
+
+## black
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + sub_ckd + screat + age + female + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$race_black==0,] 
+clusterExport(clus, c('fun.aareg', 'd'))  
+black0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+black0 <- boot.est(black0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$race_black==1,] 
+clusterExport(clus, c('fun.aareg', 'd'))  
+black1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+black1 <- boot.est(black1.est)
+
+## obese
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$bmi_35==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+obese0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+obese0 <- boot.est(obese0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$bmi_35==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+obese1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+obese1 <- boot.est(obese1.est)
+
+
+## smoker
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$smoker==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+smoker0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+smoker0 <- boot.est(smoker0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$smoker==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+smoker1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+smoker1 <- boot.est(smoker1.est)
+
+## CVD
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$sub_clinicalcvd==0,] 
+clusterExport(clus, c('fun.aareg', 'd'))  
+cvd0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+cvd0 <- boot.est(cvd0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$sub_clinicalcvd==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+cvd1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+cvd1 <- boot.est(cvd1.est)
+
+## CKD
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae + sub_clinicalcvd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z + sub_clinicalcvd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$sub_ckd==0,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+ckd0.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+ckd0 <- boot.est(ckd0.est)
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+d <- d[d$sub_ckd==1,]
+clusterExport(clus, c('fun.aareg', 'd'))  
+ckd1.est <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+ckd1 <- boot.est(ckd1.est)
+
+data.sae.sub <- data.frame(rbind(age0[1,], age1[1,], female0[1,], female1[1,], black0[1,], black1[1,], 
+                                 obese0[1,], obese1[1,], smoker0[1,], smoker1[1,], cvd0[1,], cvd1[1,], ckd0[1,], ckd1[1,],
+                                 age0[2,], age1[2,], female0[2,], female1[2,], black0[2,], black1[2,], 
+                                 obese0[2,], obese1[2,], smoker0[2,], smoker1[2,], cvd0[2,], cvd1[2,], ckd0[2,], ckd1[2,]))
+
+data.sae.sub
+write.csv(data.sae.sub, file = "table2_sae.csv")
+
+########################################################################################################
+##      appnedix table 6: alt specifications: effects at 3-months and average over study period       ##
+########################################################################################################
+
+### major cardiovascular events ###
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+
+## incremental effect at 3-month visit (D_3) on MCE
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_3 + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_3 ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+clusterExport(clus, c('fun.aareg', 'd'))
+b.D3.mce <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b.D3.mce.est <- boot.fig(b.D3.mce)
+
+## incremental effect of mean no. drugs (D_mean) on MCE
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mean + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mean ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+clusterExport(clus, c('fun.aareg', 'd'))
+b.mean.mce <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b.mean.mce.est <- boot.fig(b.mean.mce)
+
+### serious adverse events ###
+
+### SAE ###
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+
+## incremental effect at 3-month visit (D_3) on SAE
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_3 + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_3 ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+clusterExport(clus, c('fun.aareg', 'd'))
+b.D3.sae <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b.D3.sae.est <- boot.fig(b.D3.sae)
+
+## incremental effect of mean no. drugs (D_mean) on SAE
+fun.aareg <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mean + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin , data=datum) # main stage
+  first <- lm(D_mean ~ Z + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + statin, data=datum)  # main stage
+  c(summary(obs)$table[2,1], summary(main)$table[2,1])
+}
+
+clusterExport(clus, c('fun.aareg', 'd'))
+b.mean.sae <- parSapply(clus, 1:2000, function(x) fun.aareg(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+b.mean.sae.est <- boot.fig(b.mean.sae)
+
+data.mean.d3 <- data.frame(rbind(b.mean.mce.est[1,], b.D3.mce.est[1,], 
+                                 b.mean.mce.est[2,], b.D3.mce.est[2,], 
+                                 b.mean.sae.est[1,], b.D3.sae.est[1,],
+                                 b.mean.sae.est[2,], b.D3.sae.est[2,]))
+
+data.mce.sens <- data.frame(rbind(b.D3.mce.est[1,], b.mean.mce.est[1,], b.D3.mce.est[2,], b.mean.mce.est[2,]))
+data.sae.sens <- data.frame(rbind(b.D3.sae.est[1,], b.mean.sae.est[1,], b.D3.sae.est[2,], b.mean.sae.est[2,]))
+
+data.mean.d3 <- data.frame(cbind(data.mce.sens, data.sae.sens))
+
+write.csv(data.mean.d3, file = "atable6_three_mean.csv")
+
+################################################################################
+##  appendix table 8 and figure 6: test for additive & time-invariant effects ##
+################################################################################
+
+d <- read.dta("analytic_old.dta")
+
+# test assumption that additive effects are time-invariant
+## rename variables for graphical output
+d$ckd <- d$sub_ckd
+d$cvd <- d$sub_clinicalcvd
+d$creatinine <- d$screat
+d$black <- d$race_black
+
+# MCE model
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+first <- lm(D_mce ~ Z + age + cvd + ckd + creatinine + female + black + bmi + hdl + smoker + statin, na.action=na.exclude, data=d)
+d$antihypertensive <- predict(first, type="response")
+main <- aalen(S ~ antihypertensive + age + cvd + ckd + creatinine + female 
+              + black + bmi + hdl + smoker + statin, data=d)
+summary(main)
+
+# SAE model
+d$S <- Surv(I(d$sae_days/365.25), d$sae_evnt)
+first <- lm(D_sae ~ Z + age + cvd + ckd + creatinine + female + black + bmi + hdl + smoker + statin, na.action=na.exclude, data=d)
+d$antihypertensive <- predict(first, type="response")
+main <- aalen(S ~ antihypertensive + age + cvd + ckd + creatinine + female 
+              + black + bmi + hdl + smoker + statin, data=d)
+summary(main)
+
+# plot non-parametric cumulative estimates for the additive risk model
+plot(main,xlab="Time (years)", 
+     ylab = "Cumulative effect estimates")
+
+####################################################
+##      appendix table 9: Interaction models      ##
+####################################################
+
+stopCluster(clus)
+clus <- makeCluster(6)
+clusterEvalQ(clus, library('survival'))
+
+### MCE
+iv.itxn <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_mce*baseline + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + risk10yrs + statin , data=datum) # main stage
+  first <- lm(D_mce ~ Z*baseline + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + risk10yrs + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD*baseline + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + risk10yrs + statin, data=datum)  # main stage
+  c(summary(obs)$table[2:3,1], summary(obs)$table[15,1], summary(main)$table[2:3,1], summary(main)$table[15,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+clusterExport(clus, c('iv.itxn', 'd')) 
+mce.x <- parSapply(clus, 1:2000, function(x) iv.itxn(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+mce.x.est <- boot.est(mce.x)
+mce.x.est
+
+##### SAE
+iv.itxn <- function(data, indices) {
+  datum <-data[indices,]
+  obs <- aareg(S ~ D_sae*baseline + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + risk10yrs + statin , data=datum) # main stage
+  first <- lm(D_sae ~ Z*baseline + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + risk10yrs + statin, na.action=na.exclude, data=datum) # first stage
+  datum$predD <- predict(first, type="response") # predicted D
+  main <- aareg(S ~ predD*baseline + sub_clinicalcvd + sub_ckd + screat + age + female + race_black + bmi + hdl + smoker + risk10yrs + statin, data=datum)  # main stage
+  c(summary(obs)$table[2:3,1], summary(obs)$table[15,1], summary(main)$table[2:3,1], summary(main)$table[15,1])
+}
+
+d <- read.dta("analytic_old.dta")
+d$S <- Surv(I(d$t_primary/365.25), d$event_primary)
+clusterExport(clus, c('iv.itxn', 'd')) 
+sae.x <- parSapply(clus, 1:2000, function(x) iv.itxn(d,sample(1:nrow(d), replace = TRUE)), simplify=TRUE)
+sae.x.est <- boot.est(sae.x)
+sae.x.est
+
+## collect
+data.interaction <- data.frame(rbind(mce.x.est, sae.x.est))
+data.interaction
+write.csv(data.interaction, file = "atable9_interaction.csv")
