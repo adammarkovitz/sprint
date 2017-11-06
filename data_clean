@@ -1,0 +1,255 @@
+******************************************************************
+**	SPRINT: The Incremental Effects of Antihypertensive Drugs	**
+******************************************************************
+
+cls
+clear all
+cd "/Users/Adam/GD/SPRINT/github"
+
+log using sprint, replace
+*********************************
+*		Import data 			*
+*********************************
+
+foreach x in baseline bp outcomes safety {
+	import delimited `x', clear
+	save `x', replace
+	}
+
+import delimited retention, clear
+rename v1 status
+rename v2 maskid
+drop in 1
+save retention, replace
+
+*********************************
+*			Baseline 			*
+*********************************
+
+use baseline, clear
+gen baseline = .
+replace baseline = 0 if n_agents == 0
+replace baseline = 1 if n_agents == 1
+replace baseline = 2 if n_agents == 2
+replace baseline = 3 if (n_agents == 3 | n_agents == 4 | n_agents == 5 | n_agents == 6)
+
+gen baseline2 = .
+replace baseline2 = 0 if n_agents == 0
+replace baseline2 = 1 if n_agents == 1
+replace baseline2 = 2 if n_agents == 2
+replace baseline2 = 3 if (n_agents == 3)
+replace baseline2 = 4 if (n_agents == 4 | n_agents == 5 | n_agents == 6)
+
+save baseline, replace
+
+*********************************
+*			Merge data 			*
+*********************************
+
+use bp, clear
+merge m:1 maskid using retention, nogenerate
+merge m:1 maskid using baseline, nogenerate
+merge m:1 maskid using outcomes, nogenerate
+merge m:1 maskid using safety, nogenerate
+
+save "merge.dta", replace
+
+******************************
+**		Clean data			**
+******************************
+
+use "merge.dta", clear
+
+* destring visitcode to create time variable
+gen time = substr(visitcode, 1, length(visitcode)-1)
+replace time = "0" if time == "R" // RZ (= randomization) became R with destring command
+destring time, replace
+
+* destring maskid and remove leading s
+gen id = substr(maskid, 2, .) if substr(maskid,1,1) == "S"
+destring id, replace
+
+* keep only observations from final (post-baseline) visit
+bysort id (time): egen maxtime = max(time)
+keep if maxtime > 0 // retain 9249, drop 112 observations with no post-randomization data
+
+* rename treatment variable Z (instrument in IV analysis)
+rename intensive Z
+
+* create variable "sbp_final" to indicate the BP at each patient's final visit
+sort id time
+bysort id (time): egen time_last_sbp = max(time) if sbp != . 	// "time_last_sbp" = latest time in study w/a BP measurement
+gen sbp_final_value = sbp if (time==time_last_sbp) 				//  "sbp_final" indicates  BP at final visit
+bysort id (sbp_final_value): gen sbp_final = sbp_final_value[1] // fill in rest of obs with sbp_final
+
+* create variable "dbp_final" to indicate the BP at each patient's final visit
+sort id time
+bysort id (time): egen time_last_dbp = max(time) if dbp != .
+gen dbp_final_value = dbp if (time==time_last_dbp)
+bysort id (dbp_final_value): gen dbp_final = dbp_final_value[1]
+
+* create variable "D" to indicate # antihypertensive meds at each patient's final visit WITH an SBP ("endogenous" treatment in IV analysis)
+sort id time
+bysort id (time): egen time_last_D_sbp = max(time) if (n_bpclasses != . & sbp != . )
+gen D_final_value_sbp = n_bpclasses if (time==time_last_D_sbp)
+bysort id (D_final_value_sbp): gen D = D_final_value_sbp[1]
+
+* create variable "D_3" to indicate # antihypertensive meds at each patient's final visit WITH an SBP ("endogenous" treatment in IV analysis)
+gen visit_3_D = .
+replace visit_3_D = 0 if time == 0 & n_bpclasses != .
+replace visit_3_D = 1 if time == 1 & n_bpclasses != .
+replace visit_3_D = 2 if time == 2 & n_bpclasses != .
+
+sort id time
+bysort id (time): egen time_visit_3_D = max(visit_3_D) if visit_3_D != .
+gen grab_visit_3_D = 1 if visit_3_D == time_visit_3_D & visit_3_D != .
+bysort id (time): gen D_visit_3_D_value = n_bpclasses if grab_visit_3_D == 1
+sort id D_visit_3_D_value
+bysort id: gen D_3 = D_visit_3_D_value[1]
+
+gen visit_3_sbp = .
+replace visit_3_sbp = 0 if time == 0 & sbp != .
+replace visit_3_sbp = 1 if time == 1 & sbp != .
+replace visit_3_sbp = 2 if time == 2 & sbp != .
+replace visit_3_sbp = 3 if time == 3 & sbp != .
+
+sort id time
+bysort id (time): egen time_visit_3_sbp = max(visit_3_sbp) if visit_3_sbp != .
+gen grab_visit_3_sbp = 1 if visit_3_sbp == time_visit_3_sbp & visit_3_sbp != .
+bysort id (time): gen D_visit_3_sbp_value = sbp if grab_visit_3_sbp == 1
+sort id D_visit_3_sbp_value
+bysort id: gen sbp_3 = D_visit_3_sbp_value[1]
+
+* create variable "D_mean" = mean # antihypertensive meds over study period (alternate "endogenous" treatment)
+bysort id (time): egen D_mean = mean(n_bpclasses)
+
+* create variable "D_change" = change in # antihypertensive meds over study period from beginning to end(alternate "endogenous" treatment)
+sort id time
+bysort id (time): egen time_first_D = min(time) if n_bpclasses != . // create variable "time_first_D" = latest time in study w/a BP measurement
+gen D_first_value = n_bpclasses if (time==time_first_D)
+gen D_change = D - D_first_value if (D != . & D_first_value !=. )
+
+* create variable "sbp_count" = number of sbp measuremnts
+gen sbp_present = (sbp != .)
+bysort id (time): egen sbp_count = sum(sbp_present)
+
+* create variable "visit_count" = number of visits
+bysort id (time): egen visit_count = count(_n)
+
+* smoker
+gen smoker = (smoke_3cat == 2 | smoke_3cat == 3 | smoke_3cat == 4)
+
+* BMI >= 35
+gen bmi_35 = (bmi >= 35)
+
+* age >= 75
+gen age_75 = (age >= 75)
+
+* convert time to event from days to months
+gen m_primary = (t_primary/30.42) if event_primary == 1
+gen time_floor = floor(m_primary) if event_primary == 1
+gen time_primary = time_floor if event_primary == 1 & m_primary < 4
+replace time_primary = round(time_floor, 3) if event_primary == 1 & m_primary >= 4
+
+* create dummies for outcomes in panel itself
+* drop p_primary
+gen p_primary = .
+recode p_primary . = 0 if event_primary == 1 & n_bpclasses != .
+recode p_primary 0 = 1 if time == 0 & m_primary < 1 & n_bpclasses != .
+recode p_primary 0 = 2 if time == 1 & m_primary >= 1 & n_bpclasses != .
+recode p_primary 0 = 3 if time == 2 & m_primary >= 2 & n_bpclasses != .
+recode p_primary 0 = 4 if time == 3 & m_primary >= 3 & n_bpclasses != .
+recode p_primary 0 = 5 if time == 6 & m_primary >= 6 & n_bpclasses != .
+recode p_primary 0 = 6 if time == 9 & m_primary >= 9 & n_bpclasses != .
+recode p_primary 0 = 7 if time == 12 & m_primary >= 12 & n_bpclasses != .
+recode p_primary 0 = 8 if time == 15 & m_primary >= 15 & n_bpclasses != .
+recode p_primary 0 = 9 if time == 18 & m_primary >= 18 & n_bpclasses != .
+recode p_primary 0 = 10 if time == 21 & m_primary >= 21 & n_bpclasses != .
+recode p_primary 0 = 11 if time == 24 & m_primary >= 24 & n_bpclasses != .
+recode p_primary 0 = 12 if time == 27 & m_primary >= 27 & n_bpclasses != .
+recode p_primary 0 = 13 if time == 30 & m_primary >= 30 & n_bpclasses != .
+recode p_primary 0 = 14 if time == 33 & m_primary >= 33 & n_bpclasses != .
+recode p_primary 0 = 15 if time == 36 & m_primary >= 36 & n_bpclasses != .
+recode p_primary 0 = 16 if time == 39 & m_primary >= 39 & n_bpclasses != .
+recode p_primary 0 = 17 if time == 42 & m_primary >= 42 & n_bpclasses != .
+recode p_primary 0 = 18 if time == 45 & m_primary >= 45 & n_bpclasses != .
+recode p_primary 0 = 19 if time == 48 & m_primary >= 48 & n_bpclasses != .
+recode p_primary 0 = 20 if time == 51 & m_primary >= 51 & n_bpclasses != .
+recode p_primary 0 = 21 if time == 54 & m_primary >= 54 & n_bpclasses != .
+
+// (1) if MCE:
+sort id time
+bysort id (time): egen max_p_primary = max(p_primary) if event_primary == 1
+gen grab = 1 if p_primary == max_p_primary & event_primary == 1 
+bysort id (time): gen D_final_value = n_bpclasses if grab == 1
+
+// (2) if no MCE:
+bysort id (time): egen time_last_D = max(time) if (n_bpclasses != . & event_primary == 0)
+replace D_final_value = n_bpclasses if (time==time_last_D & event_primary == 0)
+
+// (3)  
+sort id D_final_value
+bysort id: gen D_mce = D_final_value[1]
+
+// check
+sort id time
+list id time m_primary sbp n_bpclasses D D_mce D_final_value event_primary if D_mce != D & m_primary > maxtime
+
+gen m_primary_sae = (sae_days/30.42) if sae_evnt == 1
+gen time_floor_sae = floor(m_primary_sae) if sae_evnt == 1
+gen time_primary_sae = time_floor_sae if sae_evnt == 1 & m_primary_sae < 4
+replace time_primary_sae = round(time_floor_sae, 3) if sae_evnt == 1 & m_primary_sae >= 4
+
+* create dummies for outcomes in panel itself
+* drop p_primary_sae
+gen p_primary_sae = .
+recode p_primary_sae . = 0 if sae_evnt == 1 & n_bpclasses != .
+recode p_primary_sae 0 = 1 if time == 0 & m_primary_sae < 1 & n_bpclasses != .
+recode p_primary_sae 0 = 2 if time == 1 & m_primary_sae >= 1 & n_bpclasses != .
+recode p_primary_sae 0 = 3 if time == 2 & m_primary_sae >= 2 & n_bpclasses != .
+recode p_primary_sae 0 = 4 if time == 3 & m_primary_sae >= 3 & n_bpclasses != .
+recode p_primary_sae 0 = 5 if time == 6 & m_primary_sae >= 6 & n_bpclasses != .
+recode p_primary_sae 0 = 6 if time == 9 & m_primary_sae >= 9 & n_bpclasses != .
+recode p_primary_sae 0 = 7 if time == 12 & m_primary_sae >= 12 & n_bpclasses != .
+recode p_primary_sae 0 = 8 if time == 15 & m_primary_sae >= 15 & n_bpclasses != .
+recode p_primary_sae 0 = 9 if time == 18 & m_primary_sae >= 18 & n_bpclasses != .
+recode p_primary_sae 0 = 10 if time == 21 & m_primary_sae >= 21 & n_bpclasses != .
+recode p_primary_sae 0 = 11 if time == 24 & m_primary_sae >= 24 & n_bpclasses != .
+recode p_primary_sae 0 = 12 if time == 27 & m_primary_sae >= 27 & n_bpclasses != .
+recode p_primary_sae 0 = 13 if time == 30 & m_primary_sae >= 30 & n_bpclasses != .
+recode p_primary_sae 0 = 14 if time == 33 & m_primary_sae >= 33 & n_bpclasses != .
+recode p_primary_sae 0 = 15 if time == 36 & m_primary_sae >= 36 & n_bpclasses != .
+recode p_primary_sae 0 = 16 if time == 39 & m_primary_sae >= 39 & n_bpclasses != .
+recode p_primary_sae 0 = 17 if time == 42 & m_primary_sae >= 42 & n_bpclasses != .
+recode p_primary_sae 0 = 18 if time == 45 & m_primary_sae >= 45 & n_bpclasses != .
+recode p_primary_sae 0 = 19 if time == 48 & m_primary_sae >= 48 & n_bpclasses != .
+recode p_primary_sae 0 = 20 if time == 51 & m_primary_sae >= 51 & n_bpclasses != .
+recode p_primary_sae 0 = 21 if time == 54 & m_primary_sae >= 54 & n_bpclasses != .
+
+// (1) if SAE:
+sort id time
+bysort id (time): egen max_p_primary_sae = max(p_primary_sae) if sae_evnt == 1
+gen grab_sae = 1 if p_primary_sae == max_p_primary_sae & sae_evnt == 1 
+bysort id (time): gen D_final_value_sae = n_bpclasses if grab_sae == 1
+
+// (2) if no SAE:
+bysort id (time): egen time_last_D_sae = max(time) if (n_bpclasses != . & sae_evnt == 0)
+replace D_final_value_sae = n_bpclasses if (time==time_last_D_sae & sae_evnt == 0)
+
+// (3)  
+sort id D_final_value_sae
+bysort id: gen D_sae = D_final_value_sae[1]
+
+// check
+sort id time
+list id time m_primary_sae sbp n_bpclasses D D_sae D_final_value_sae sae_evnt if D_sae != D & m_primary_sae > maxtime
+
+* create interaction terms for later
+gen D_B = D*baseline
+gen Z_B = Z*baseline
+
+save panel, replace
+
+* collapse data set
+drop if time != 0
+save collapsed, replace
